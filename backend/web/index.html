@@ -1,0 +1,863 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>ReDrive Teleop Cockpit</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+
+  <style>
+    :root {
+      --bg-core: #050505;
+      --bg-panel: #10141a;
+      --border: rgba(255, 255, 255, 0.15);
+      --accent: #2a9bff;
+      /* Cyan/Blue */
+      --warn: #ffb020;
+      --danger: #ff3b3b;
+      --success: #00e676;
+      --text-main: #eef2f6;
+      --text-muted: #8b9bb4;
+
+      --row-top-h: 180px;
+      --row-bot-h: 200px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-core);
+      color: var(--text-main);
+      font-family: "SF Mono", "Segoe UI Mono", "Roboto Mono", monospace;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+    }
+
+    /* --- UTILS --- */
+    .hidden {
+      display: none !important;
+    }
+
+    /* --- LAYOUT GRID & MAIN BORDER --- */
+    .cockpit {
+      display: grid;
+      grid-template-rows: var(--row-top-h) 1fr var(--row-bot-h);
+      height: 100%;
+      width: 100%;
+      padding: 8px;
+      gap: 8px;
+
+      /* THE MAIN STATUS BORDER */
+      border: 6px solid #333;
+      /* Default Grey */
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    /* STATUS STATES FOR THE FULL SCREEN */
+    .cockpit.state-idle {
+      border-color: #333;
+    }
+
+    .cockpit.state-connected {
+      border-color: var(--accent);
+      /* Blue */
+      box-shadow: inset 0 0 15px rgba(42, 155, 255, 0.15);
+    }
+
+    .cockpit.state-estop {
+      border-color: var(--danger);
+      /* Red */
+      box-shadow: inset 0 0 30px rgba(255, 59, 59, 0.3);
+      animation: pulse-border 2s infinite;
+    }
+
+    @keyframes pulse-border {
+      0% {
+        border-color: var(--danger);
+      }
+
+      50% {
+        border-color: #a30000;
+      }
+
+      100% {
+        border-color: var(--danger);
+      }
+    }
+
+    /* --- TOP ROW: MIRRORS --- */
+    .row-mirrors {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+
+    .mirror-box {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+      border-radius: 4px;
+    }
+
+    .mirror-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .label-ov {
+      position: absolute;
+      top: 6px;
+      left: 8px;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 2px 6px;
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.7);
+      border-radius: 2px;
+      pointer-events: none;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* --- CENTER ROW: MAIN VIEW --- */
+    .row-main {
+      position: relative;
+      background: #000;
+      border: 1px solid var(--border);
+      /* Standard internal border */
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .row-main img {
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      display: block;
+    }
+
+    /* HUD Overlay */
+    .hud-overlay {
+      position: absolute;
+      top: 10px;
+      left: 0;
+      width: 100%;
+      padding: 0 20px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .hud-badge {
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: var(--text-main);
+      padding: 4px 10px;
+      font-size: 11px;
+      border-radius: 12px;
+      backdrop-filter: blur(4px);
+    }
+
+    .hud-badge.active {
+      border-color: var(--success);
+      color: var(--success);
+      background: rgba(0, 230, 118, 0.1);
+    }
+
+    .hud-badge.warning {
+      border-color: var(--warn);
+      color: var(--warn);
+    }
+
+    .hud-badge.danger {
+      border-color: var(--danger);
+      color: var(--danger);
+      background: rgba(255, 59, 59, 0.15);
+    }
+
+    /* --- BOTTOM ROW: DASHBOARD --- */
+    .row-dash {
+      display: grid;
+      grid-template-columns: 320px 1fr 340px;
+      gap: 8px;
+    }
+
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      background: rgba(255, 255, 255, 0.03);
+      padding: 6px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #333;
+      display: inline-block;
+      margin-right: 6px;
+    }
+
+    .status-dot.ok {
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    .status-dot.err {
+      background: var(--danger);
+    }
+
+    /* Map Panel */
+    .map-container {
+      flex: 1;
+      position: relative;
+    }
+
+    .map-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Instrument Cluster (Middle) */
+    .cluster-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      flex: 1;
+      position: relative;
+    }
+
+    .center-footer {
+      padding: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.25);
+      display: flex;
+      flex-direction: row;
+      /* Horizontal Layout */
+      align-items: center;
+      gap: 10px;
+      min-height: 42px;
+      /* Ensure consistent height */
+    }
+
+    .speed-gauge {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      border-right: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .big-num {
+      font-size: 80px;
+      line-height: 1;
+      font-weight: 300;
+      letter-spacing: -2px;
+    }
+
+    .unit {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-top: -5px;
+    }
+
+    .cluster-info {
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 4px;
+    }
+
+    .info-lbl {
+      color: var(--text-muted);
+    }
+
+    .info-val {
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .gear-display {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 120px;
+      font-weight: 900;
+      color: rgba(255, 255, 255, 0.03);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Controls Panel (Right) */
+    .controls-grid {
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      height: 100%;
+    }
+
+    /* UPDATED: Inputs are more visible now */
+    .input-group {
+      display: flex;
+      gap: 6px;
+      flex: 2;
+    }
+
+    input {
+      background: rgba(0, 0, 0, 0.5);
+      /* Darker bg for contrast */
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      /* Brighter border */
+      color: var(--text-main);
+      padding: 6px 8px;
+      font-family: inherit;
+      font-size: 11px;
+      border-radius: 4px;
+      width: 100%;
+      transition: all 0.2s;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--accent);
+      background: rgba(0, 0, 0, 0.8);
+    }
+
+    button {
+      border: none;
+      padding: 10px;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-main);
+    }
+
+    button:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    button.btn-primary {
+      background: rgba(42, 155, 255, 0.2);
+      border: 1px solid rgba(42, 155, 255, 0.4);
+      color: #8bcaff;
+    }
+
+    button.btn-toggle.active {
+      background: rgba(125, 255, 178, 0.2);
+      border: 1px solid rgba(125, 255, 178, 0.4);
+      color: #aaffcc;
+    }
+
+    button.btn-danger {
+      background: rgba(255, 59, 59, 0.2);
+      border: 1px solid rgba(255, 59, 59, 0.4);
+      color: #ffadad;
+    }
+
+    .estop-btn {
+      background: var(--danger) !important;
+      color: white !important;
+      font-size: 14px;
+      padding: 12px;
+      letter-spacing: 1px;
+      margin-top: auto;
+      box-shadow: 0 4px 15px rgba(255, 59, 59, 0.3);
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .estop-btn.active {
+      background: #fff !important;
+      color: var(--danger) !important;
+      animation: flash 0.5s infinite;
+    }
+
+    @keyframes flash {
+      0% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+
+      100% {
+        opacity: 1;
+      }
+    }
+
+    #saveNotify {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--success);
+      padding: 4px 8px;
+      border: 1px solid var(--success);
+      border-radius: 4px;
+      background: rgba(0, 230, 118, 0.15);
+      white-space: nowrap;
+      flex: 1;
+      text-align: center;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(5px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="cockpit" id="cockpitFrame">
+
+    <div class="row-mirrors">
+      <div class="mirror-box">
+        <div class="label-ov">Left Mirror</div>
+        <img id="mirror_left" src="" />
+      </div>
+      <div class="mirror-box">
+        <div class="label-ov">Rear Mirror</div>
+        <img id="rear_mirror" src="" />
+      </div>
+      <div class="mirror-box">
+        <div class="label-ov">Right Mirror</div>
+        <img id="mirror_right" src="" />
+      </div>
+    </div>
+
+    <div class="row-main">
+      <img id="panorama" src="" />
+
+      <div class="hud-overlay">
+        <div style="display:flex; gap:10px;">
+          <div class="hud-badge active">RE-DRIVE SYS</div>
+          <div id="flagRec" class="hud-badge">REC OFF</div>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <div id="flagTeleop" class="hud-badge active">TELEOP</div>
+          <div id="flagLane" class="hud-badge active">LANE ASSIST</div>
+          <div id="flagAeb" class="hud-badge active">AEB</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row-dash">
+
+      <div class="panel">
+        <div class="panel-header">
+          <span>Localization</span>
+          <span id="mapMeta" style="font-weight:400; opacity:0.7">--</span>
+        </div>
+        <div class="map-container">
+          <img id="map" src="" />
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span>Telemetry</span>
+          <div
+            style="font-size: 10px; font-weight:400; color:var(--text-muted); font-family:monospace; display:flex; align-items:center; gap:8px;">
+            <span id="netStat">NET: ESTOP | RTT -- | JIT -- | AGE --</span>
+            <span id="backendStatus" class="status-dot err"></span>
+          </div>
+        </div>
+        <div class="cluster-grid">
+          <div class="gear-display" id="bgGear">D</div>
+
+          <div class="speed-gauge">
+            <div class="big-num" id="speed">0</div>
+            <div class="unit">KM/H</div>
+          </div>
+
+          <div class="cluster-info">
+            <div class="info-row">
+              <span class="info-lbl">GEAR</span>
+              <span class="info-val" id="gear">D</span>
+            </div>
+            <div class="info-row">
+              <span class="info-lbl">OBSTACLE</span>
+              <span class="info-val"><span id="obs">--</span> m</span>
+            </div>
+            <div class="info-row">
+              <span class="info-lbl">OFFSET</span>
+              <span class="info-val"><span id="lane">--</span> m</span>
+            </div>
+            <div class="info-row">
+              <span class="info-lbl">SESSION</span>
+              <span class="info-val" id="sessionID" style="font-size:10px;">--</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="center-footer">
+
+          <div id="saveNotify" class="hidden">
+            Session Saved.
+          </div>
+
+          <div id="err" style="color:var(--danger); font-size:10px; white-space:nowrap;"></div>
+
+          <div class="input-group">
+            <input id="httpBase" placeholder="HTTP Base" />
+            <input id="wsUrl" placeholder="WS URL" />
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span>Vehicle Control</span>
+          <span id="wsStatus" class="status-dot err"></span>
+        </div>
+        <div class="controls-grid">
+
+          <div style="display:flex; gap:4px;">
+            <button id="connectBtn" class="btn-primary" style="flex:1">Connect</button>
+            <button id="recordBtn" style="flex:1">Rec Start</button>
+            <button id="stopBtn" class="btn-danger" style="width:30px;">■</button>
+          </div>
+
+          <div style="display:flex; gap:4px;">
+            <button id="laneBtn" class="btn-toggle active" style="flex:1">Lane Assist</button>
+            <button id="aebBtn" class="btn-toggle active" style="flex:1">AEB</button>
+          </div>
+
+          <div style="flex:1; display:flex;">
+            <button id="estopBtn" class="estop-btn" style="flex:1">E-STOP</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ---------------------------
+    // State
+    // ---------------------------
+    let ws = null;
+    let steer = 0, throttle = 0, brake = 0, handbrake = false, reverse = false;
+    const keys = new Set();
+
+    let laneAssist = true;
+    let aeb = true;
+    let backendOk = false;
+    let wsOk = false;
+    let estop = false;
+    let autoEstop = false;
+    let lastSessionId = null;
+
+    // Life Monitor State
+    let lastTelTs = Date.now();
+    let rtt = 0;
+    let jit = 0;
+
+    function updateNetStat(age) {
+      const stat = document.getElementById("netStat");
+      const estopStr = (estop || autoEstop || age > 100) ? "ESTOP" : "OK";
+      const color = (estopStr === "OK") ? "var(--success)" : "var(--danger)";
+
+      // Update the text
+      stat.innerHTML = `NET: <span style="color:${color}">${estopStr}</span> | RTT ${rtt.toFixed(0)}MS | JIT ${jit.toFixed(0)}MS | AGE ${age.toFixed(0)}MS`;
+
+      const dot = document.getElementById("backendStatus");
+      if (age > 100) dot.classList.replace("ok", "err");
+    }
+
+    function setErr(t) { document.getElementById("err").textContent = t || ""; }
+
+    function updateVisualState() {
+      // Status Dots
+      const bDot = document.getElementById("backendStatus");
+      if (backendOk) bDot.classList.replace("err", "ok"); else bDot.classList.replace("ok", "err");
+
+      const wDot = document.getElementById("wsStatus");
+      if (wsOk) wDot.classList.replace("err", "ok"); else wDot.classList.replace("ok", "err");
+
+      // --- FULL SCREEN BORDER LOGIC ---
+      const cockpit = document.getElementById("cockpitFrame");
+      const eBtn = document.getElementById("estopBtn");
+
+      // Remove all states first
+      cockpit.classList.remove("state-idle", "state-connected", "state-estop");
+
+      if (estop || autoEstop) {
+        // RED: E-Stop takes priority over everything
+        cockpit.classList.add("state-estop");
+        eBtn.classList.add("active");
+        eBtn.textContent = "E-STOP ACTIVE";
+      } else if (wsOk && backendOk) {
+        // BLUE: Connected and safe
+        cockpit.classList.add("state-connected");
+        eBtn.classList.remove("active");
+        eBtn.textContent = "E-STOP";
+      } else {
+        // GREY: Disconnected / Idle
+        cockpit.classList.add("state-idle");
+        eBtn.classList.remove("active");
+        eBtn.textContent = "E-STOP";
+      }
+    }
+
+    function defaultBases() {
+      const origin = (window.location.origin && window.location.origin.startsWith("http"))
+        ? window.location.origin
+        : "http://127.0.0.1:8080";
+      document.getElementById("httpBase").value = origin;
+      const host = (new URL(origin)).hostname;
+      document.getElementById("wsUrl").value = `ws://${host}:8765/ws`;
+    }
+
+    function setStreams() {
+      const base = document.getElementById("httpBase").value.replace(/\/$/, "");
+      document.getElementById("panorama").src = `${base}/stream/panorama`;
+      document.getElementById("rear_mirror").src = `${base}/stream/rear_mirror`;
+      document.getElementById("mirror_left").src = `${base}/stream/mirror_left`;
+      document.getElementById("mirror_right").src = `${base}/stream/mirror_right`;
+      document.getElementById("map").src = `${base}/stream/map`;
+    }
+
+    async function api(path, body = null) {
+      const base = document.getElementById("httpBase").value.replace(/\/$/, "");
+      const url = `${base}${path}`;
+      const opt = body
+        ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+        : { method: "GET" };
+      const r = await fetch(url, opt);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    }
+
+    async function healthCheck() {
+      try {
+        const r = await api("/health");
+        backendOk = !!r.ok;
+      } catch (e) {
+        backendOk = false;
+      }
+      updateVisualState();
+    }
+
+    function connectWS() {
+      const url = document.getElementById("wsUrl").value.trim();
+      try { ws = new WebSocket(url); } catch (e) { wsOk = false; updateVisualState(); return; }
+
+      wsOk = false; updateVisualState();
+
+      ws.onopen = () => { wsOk = true; updateVisualState(); };
+      ws.onclose = () => { wsOk = false; updateVisualState(); };
+      ws.onerror = () => { wsOk = false; updateVisualState(); };
+
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type !== "telemetry") return;
+          const d = msg.data;
+
+          // Update Cluster
+          document.getElementById("speed").textContent = Number(d.speed_kmh).toFixed(0);
+          document.getElementById("gear").textContent = d.gear;
+          document.getElementById("bgGear").textContent = d.gear;
+          document.getElementById("obs").textContent = (d.obstacle_m >= 900 ? "--" : Number(d.obstacle_m).toFixed(1));
+          document.getElementById("lane").textContent = Number(d.lane_offset_m).toFixed(2);
+
+          if (d.session_id) document.getElementById("sessionID").textContent = d.session_id;
+
+          // Flags (HUD)
+          const teleopEl = document.getElementById("flagTeleop");
+          if (d.teleop_active) teleopEl.classList.replace("danger", "active");
+          else { teleopEl.classList.remove("active"); teleopEl.classList.add("danger"); }
+
+          const laneEl = document.getElementById("flagLane");
+          if (d.lane_assist) laneEl.classList.add("active"); else laneEl.classList.remove("active");
+
+          const aebEl = document.getElementById("flagAeb");
+          if (d.aeb) aebEl.classList.add("active"); else aebEl.classList.remove("active");
+
+          // Metrics Update
+          const now = Date.now();
+          lastTelTs = now;
+
+          if (d.ack_ts > 0) {
+            rtt = now - d.ack_ts;
+          }
+          jit = d.jitter_ms || 0;
+
+          const recEl = document.getElementById("flagRec");
+          if (d.recording) {
+            recEl.classList.add("danger");
+            recEl.textContent = "REC ON";
+          } else {
+            recEl.classList.remove("danger");
+            recEl.textContent = "REC OFF";
+          }
+
+          // Auto E-STOP logic
+          const sp = Number(d.speed_kmh || 0);
+          const ob = Number(d.obstacle_m || 999);
+          autoEstop = (sp > 8 && ob > 0 && ob < 4.0);
+          updateVisualState();
+
+        } catch (e) { }
+      };
+    }
+
+    function updateControlFromKeys() {
+      const left = keys.has("a") || keys.has("arrowleft");
+      const right = keys.has("d") || keys.has("arrowright");
+      const up = keys.has("w") || keys.has("arrowup");
+      const down = keys.has("s") || keys.has("arrowdown");
+
+      steer = (right ? 0.7 : 0) + (left ? -0.7 : 0);
+      throttle = up ? 0.75 : 0;
+      brake = down ? 0.65 : 0;
+      handbrake = keys.has(" ");
+
+      if (estop) { steer = 0; throttle = 0; brake = 1.0; handbrake = true; }
+    }
+
+    function sendControl() {
+      if (!ws || ws.readyState !== 1) return;
+      ws.send(JSON.stringify({
+        type: "control",
+        data: {
+          t: Date.now() / 1000,
+          steer: Math.max(-1, Math.min(1, steer)),
+          throttle: Math.max(0, Math.min(1, throttle)),
+          brake: Math.max(0, Math.min(1, brake)),
+          handbrake,
+          reverse,
+          t: Date.now() / 1000.0 // Send current ts
+        }
+      }));
+    }
+
+    // Bindings
+    document.addEventListener("keydown", (e) => {
+      keys.add(e.key.toLowerCase());
+      if (e.key.toLowerCase() === "r") reverse = !reverse;
+      if (e.key.toLowerCase() === "e") {
+        estop = !estop;
+        updateVisualState();
+      }
+      updateControlFromKeys();
+    });
+    document.addEventListener("keyup", (e) => { keys.delete(e.key.toLowerCase()); updateControlFromKeys(); });
+
+    document.getElementById("connectBtn").onclick = async () => {
+      setErr(""); setStreams();
+      await healthCheck(); connectWS();
+      setInterval(healthCheck, 2000);
+    };
+
+    document.getElementById("laneBtn").onclick = async () => {
+      laneAssist = !laneAssist;
+      const btn = document.getElementById("laneBtn");
+      if (laneAssist) btn.classList.add("active"); else btn.classList.remove("active");
+      await api("/api/features", { lane_assist: laneAssist, aeb });
+    };
+
+    document.getElementById("aebBtn").onclick = async () => {
+      aeb = !aeb;
+      const btn = document.getElementById("aebBtn");
+      if (aeb) btn.classList.add("active"); else btn.classList.remove("active");
+      await api("/api/features", { lane_assist: laneAssist, aeb });
+    };
+
+    // RECORDING & AUTO-SAVE LOGIC
+    document.getElementById("recordBtn").onclick = async () => {
+      try {
+        setErr("");
+        document.getElementById("saveNotify").classList.add("hidden");
+        await api("/api/session/start", {});
+      } catch (e) { setErr("Rec Fail"); }
+    };
+
+    document.getElementById("stopBtn").onclick = async () => {
+      try {
+        setErr("");
+        const r = await api("/api/session/stop", {});
+        lastSessionId = r.session_id;
+
+        const notify = document.getElementById("saveNotify");
+        notify.classList.remove("hidden");
+        notify.textContent = `Saved: ${lastSessionId}.zip`;
+
+      } catch (e) { setErr("Stop Fail"); }
+    };
+
+    document.getElementById("estopBtn").onclick = () => { estop = !estop; updateVisualState(); };
+
+    // Loop
+    setInterval(() => {
+      updateControlFromKeys();
+      sendControl();
+
+      // Watchdog Check
+      const age = Date.now() - lastTelTs;
+      if (age > 100) {
+        // If signal is too old, visual estop (backend will likely stop itself too)
+        // We don't force 'estop=true' variable here to avoid sticky-lock, 
+        // but we visually indicate it and the 'updateNetStat' will show ESTOP
+        if (wsOk && backendOk) setErr("SIGNAL LOST");
+      }
+      updateNetStat(age);
+
+    }, 20); // 50hz to catch the 100ms timeout smoothly
+
+    // Init
+    defaultBases();
+    updateVisualState();
+  </script>
+</body>
+
+</html>
