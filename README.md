@@ -1,6 +1,22 @@
 # Remote CARLA Simulation & Teleoperation Setup Guide
 
+
 This guide details the process of setting up a remote GPU instance (e.g., Vast.ai, AWS, Azure) to run the CARLA simulator in headless mode and connecting a local web-based teleoperation cockpit to it.
+
+## System Overview
+
+The ReDrive system is designed to provide a low-latency, high-fidelity teleoperation experience by decoupling the simulation engine (CARLA) from the operator's interface. It utilizes a containerized backend running on GPU-accelerated infrastructure to handle physics and rendering, streaming data via WebRTC/WebSocket to a lightweight client-side cockpit. This architecture ensures scalability and enables operations even on standard consumer hardware.
+
+<p align="center">
+  <img src="assets/system_architecture.png" alt="System Architecture" width="800">
+</p>
+
+The simulator preview below demonstrates the real-time operational capability of the system. Operators receive multi-view video feeds (panoramic, mirrors, rear) alongside telemetry overlay, providing situational awareness comparable to in-vehicle operation.
+
+<p align="center">
+  <img src="assets/simulator_preview.gif" alt="Simulator Preview" width="900">
+</p>
+
 
 ## Prerequisites
 
